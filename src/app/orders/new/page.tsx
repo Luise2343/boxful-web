@@ -1,107 +1,129 @@
 "use client";
+
 import { useState } from "react";
-import { Steps, Card, Form, Input, Button, Space, InputNumber, message } from "antd";
-import Protected from "@/components/Protected";
-import { apiFetch } from "@/lib/api";
+import { Form, message } from "antd";
 import { useRouter } from "next/navigation";
 
+import Protected from "@/components/Protected";
+import { apiFetch } from "@/lib/api";
+
+import StepClient, { type ClientForm } from "./StepClient";
+import StepPackages from "./StepPackages";
+import type { Pkg } from "./types";
+
+type Step = 1 | 2;
+
 export default function NewOrderPage() {
-  const [step, setStep] = useState(0);
-  const [formClient] = Form.useForm();
-  const [formPkgs] = Form.useForm();
   const router = useRouter();
 
-  const next = async () => {
-    const ok = await formClient.validateFields().then(() => true).catch(() => false);
-    if (ok) setStep(1);
-  };
-  const back = () => setStep(0);
+  // Paso actual
+  const [step, setStep] = useState<Step>(1);
 
-  async function submit() {
-    const client = formClient.getFieldsValue();
-    const { packages } = formPkgs.getFieldsValue();
+  // Datos del cliente (Paso 1)
+  const [client, setClient] = useState<Partial<ClientForm>>({
+    phoneCode: "503",
+  });
 
-    if (!packages?.length) {
-      message.warning("Agrega al menos 1 paquete");
-      return;
-    }
+  // Paquetes (Paso 2)
+  const [packages, setPackages] = useState<Pkg[]>([]);
+  const [addForm] = Form.useForm<Pkg>();
 
+  // Handlers Step 1
+  function handleClientChange(v: Partial<ClientForm>) {
+    setClient((prev) => ({ ...prev, ...v }));
+  }
+
+  function handleClientNext(data: ClientForm) {
+    setClient(data);
+    setStep(2);
+  }
+
+  // Handlers Step 2
+  function handleAddPackage(p: Pkg) {
+    setPackages((prev) => [...prev, p]);
+  }
+
+  function handleRemovePackage(idx: number) {
+    setPackages((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  // Submit final → POST /orders
+  async function handleSubmit() {
     try {
-        await apiFetch("/orders", {
-    method: "POST",
-    body: JSON.stringify({
-        customerName: String(client.customerName || "").trim(),
-        customerPhone: String(client.customerPhone || "").replace(/\D/g, ""), // solo dígitos
-        address: String(client.address || "").trim(),
-        packages: (packages || []).map((p: any) => ({
-        description: p.description,
-        weight: Number(p.weight || 0),
-        dimensions: { l: Number(p.l || 0), w: Number(p.w || 0), h: Number(p.h || 0) }
-        }))
-    })
-    });
-      message.success("Orden creada");
-      router.replace("/orders");
-    } catch (e: any) {
-      message.error(e.message || "Error al crear orden");
+      if (!packages.length) {
+        message.warning("Agrega al menos un paquete.");
+        return;
+      }
+
+      const customerName = `${client.firstName ?? ""} ${client.lastName ?? ""}`
+        .trim()
+        .replace(/\s+/g, " ");
+
+      const customerPhone = `${client.phoneCode ?? ""}${
+        (client.phoneNumber ?? "").replace(/\s+/g, "")
+      }`;
+
+      // Usamos la dirección del destinatario como "address" principal
+      const address =
+        (client as any).destinationAddress ||
+        (client as any).recipientAddress ||
+        client.pickupAddress ||
+        "";
+
+      const payload = {
+        customerName,
+        customerPhone,
+        address,
+        status: "PENDING",
+        packages: packages.map((p) => ({
+          description: p.description,
+          weight: p.weight,
+          dimensions: { l: p.l, w: p.w, h: p.h },
+        })),
+      };
+
+      await apiFetch("/orders", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+
+      message.success("Orden creada correctamente.");
+      router.push("/orders");
+    } catch (err: any) {
+      console.error(err);
+      message.error("No se pudo crear la orden.");
     }
   }
 
   return (
     <Protected>
-      <Card title="Nueva orden">
-        <Steps current={step} items={[{ title: "Cliente" }, { title: "Paquetes" }]} style={{ marginBottom: 24 }} />
+      {/* Intro de la pantalla (siempre visible como en Figma) */}
+      <div className="intro-header" style={{ marginBottom: 12 }}>
+        <div className="intro-header__title">Crea una orden</div>
+        <p className="intro-header__subtitle">
+          Dale una ventaja competitiva a tu negocio con entregas el{" "}
+          <b>mismo día</b> (Área Metropolitana) y el <b>día siguiente</b> a
+          nivel nacional.
+        </p>
+      </div>
 
-        {step === 0 && (
-          <Form form={formClient} layout="vertical" initialValues={{ customerName: "", customerPhone: "", address: "" }}>
-            <Form.Item label="Nombre del cliente" name="customerName" rules={[{ required: true }]}>
-              <Input />
-            </Form.Item>
-            <Form.Item label="Teléfono" name="customerPhone" rules={[{ required: true }]}>
-              <Input />
-            </Form.Item>
-            <Form.Item label="Dirección" name="address" rules={[{ required: true }]}>
-              <Input.TextArea rows={3} />
-            </Form.Item>
-            <Space>
-              <Button type="primary" onClick={next}>Siguiente</Button>
-            </Space>
-          </Form>
-        )}
-
-        {step === 1 && (
-          <Form form={formPkgs} layout="vertical" initialValues={{ packages: [{ description: "" }] }}>
-            <Form.List name="packages">
-              {(fields, { add, remove }) => (
-                <>
-                  {fields.map(({ key, name }) => (
-                    <Card key={key} size="small" style={{ marginBottom: 12 }} title={`Paquete #${name + 1}`}
-                      extra={<Button danger onClick={() => remove(name)}>Eliminar</Button>}>
-                      <Form.Item label="Descripción" name={[name, "description"]} rules={[{ required: true }]}>
-                        <Input placeholder="Caja mediana" />
-                      </Form.Item>
-                      <Form.Item label="Peso (kg)" name={[name, "weight"]} rules={[{ required: true }]}>
-                        <InputNumber min={0} style={{ width: 160 }} />
-                      </Form.Item>
-                      <Space wrap>
-                        <Form.Item label="Largo" name={[name, "l"]}><InputNumber min={0} /></Form.Item>
-                        <Form.Item label="Ancho" name={[name, "w"]}><InputNumber min={0} /></Form.Item>
-                        <Form.Item label="Alto"  name={[name, "h"]}><InputNumber min={0} /></Form.Item>
-                      </Space>
-                    </Card>
-                  ))}
-                  <Button onClick={() => add()}>Agregar paquete</Button>
-                </>
-              )}
-            </Form.List>
-
-            <Space style={{ marginTop: 16 }}>
-              <Button onClick={back}>Atrás</Button>
-              <Button type="primary" onClick={submit}>Crear orden</Button>
-            </Space>
-          </Form>
-        )}
-      </Card>
+      {step === 1 ? (
+        <StepClient
+          value={client}
+          onChange={handleClientChange}
+          onNext={handleClientNext}
+          onBack={() => router.push("/orders")}
+        />
+      ) : (
+        <StepPackages
+          addForm={addForm}
+          packages={packages}
+          onAdd={handleAddPackage}
+          onRemove={handleRemovePackage}
+          onBack={() => setStep(1)}
+          onSubmit={handleSubmit}
+        />
+      )}
     </Protected>
   );
 }
