@@ -1,0 +1,5 @@
+@import url('antd/dist/reset.css');
+
+:root { --maxw: 1100px; }
+body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+main { max-width: var(--maxw); margin: 24px auto; padding: 0 16px; }
