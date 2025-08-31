@@ -63,17 +63,29 @@ export default function NewOrderPage() {
         (client.phoneNumber ?? "").replace(/\s+/g, "")
       }`;
 
-      // Usamos la dirección del destinatario como "address" principal
+      // Dirección principal (usamos la del destinatario si existe)
       const address =
         (client as any).destinationAddress ||
         (client as any).recipientAddress ||
         client.pickupAddress ||
         "";
 
+      // Requeridos por el backend
+      const department = (client.department ?? "").trim();
+      const municipality = (client.municipality ?? "").trim();
+
+      if (!department || !municipality) {
+        message.warning("Completa Departamento y Municipio.");
+        setStep(1);
+        return;
+      }
+
       const payload = {
         customerName,
         customerPhone,
         address,
+        department,
+        municipality,
         status: "PENDING",
         packages: packages.map((p) => ({
           description: p.description,

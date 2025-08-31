@@ -6,8 +6,8 @@ export const metadata: Metadata = { title: "Boxful Web", description: "MVP UI" }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es">
-      <body>
+    <html lang="es" suppressHydrationWarning>
+      <body suppressHydrationWarning>
         <RouteShell>{children}</RouteShell>
       </body>
     </html>
